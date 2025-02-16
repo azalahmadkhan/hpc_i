@@ -7,6 +7,7 @@ import re
 import argparse
 import os
 import requests
+from datasets import load_dataset  # Import Hugging Face datasets library
 
 def get_ollama_response(prompt, model_name="qwen"):
     """Get response from Ollama API"""
@@ -33,8 +34,14 @@ def get_ollama_response(prompt, model_name="qwen"):
 def extract_steps(response):
     """Extract numbered steps from the response"""
     steps = re.findall(r'\d+\.\s+(.*?)(?=\n\d+\.|\n*$)', response, re.DOTALL)
+    
     if not steps:
-        steps = [line.strip() for line in response.split('\n') if line.strip()]
+        steps = [line.strip() for line in response.split('\n') 
+                if line.strip() and not line.startswith("Here") and not line.startswith("Let")]
+    
+    if not steps:
+        steps = [response.strip()]
+        
     return steps
 
 def calculate_step_similarities(all_steps, model):
@@ -44,65 +51,69 @@ def calculate_step_similarities(all_steps, model):
     similarities = cosine_similarity(embeddings)
     return similarities, flat_steps
 
-def load_hpc_instruct_data(file_path, num_samples=10):
-    """Load and limit HPC-Instruct dataset"""
-    with open(file_path, 'r') as f:
-        data = json.load(f)
-    return data[:num_samples]
+def load_first_10_questions():
+    """Load the first 10 questions from the HPC-Instruct dataset using Hugging Face datasets library"""
+    dataset = load_dataset("hpcgroup/hpc-instruct", split="train[:10]")  # Load first 10 samples
+    questions = [{"question": item["problem_statement"]} for item in dataset]
+    print(f"Successfully loaded first 10 questions from the HPC-Instruct dataset")
+    return questions
 
 def main():
-    parser = argparse.ArgumentParser(description='Process HPC-Instruct dataset with Ollama')
-    parser.add_argument('--dataset', required=True, help='Path to HPC-Instruct dataset')
+    parser = argparse.ArgumentParser(description='Process first 10 questions from HPC-Instruct dataset with Ollama')
     parser.add_argument('--output_dir', required=True, help='Directory to save output')
-    parser.add_argument('--num_samples', type=int, default=10, help='Number of samples to process')
     parser.add_argument('--model_name', default='qwen', help='Name of Ollama model')
     
     args = parser.parse_args()
     
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Initialize sentence transformer for similarity analysis
     print("Loading sentence transformer model...")
     st_model = SentenceTransformer('all-MiniLM-L6-v2')
     
-    # Load dataset
-    samples = load_hpc_instruct_data(args.dataset, args.num_samples)
+    samples = load_first_10_questions()
     
     all_steps = []
     latencies = []
+    responses = []
     
-    # Process each sample
     for i, sample in enumerate(samples):
-        print(f"Processing query {i+1}/{len(samples)}")
+        print(f"\nProcessing question {i+1}/10")
         question = sample["question"]
+        print(f"Question: {question[:100]}...")
+        
         prompt = f"Please solve this problem step by step:\n\n{question}"
         
-        # Get response from Ollama
         response, latency = get_ollama_response(prompt, args.model_name)
         latencies.append(latency)
+        responses.append(response)
         
         steps = extract_steps(response)
         all_steps.append(steps)
         
         print(f"Found {len(steps)} steps. Latency: {latency:.2f} seconds")
     
-    # Calculate similarities
     similarities, flat_steps = calculate_step_similarities(all_steps, st_model)
     
-    # Prepare results
     results = {
-        "steps": all_steps,
+        "metadata": {
+            "total_questions": 10,
+            "model_name": args.model_name,
+            "average_latency": sum(latencies) / len(latencies)
+        },
+        "questions": [sample["question"] for sample in samples],
+        "full_responses": responses,
+        "extracted_steps": all_steps,
         "latencies": latencies,
         "flat_steps": flat_steps,
         "similarities": similarities.tolist()
     }
     
-    # Save results
-    output_path = os.path.join(args.output_dir, "hpc_instruct_results.json")
+    output_path = os.path.join(args.output_dir, "hpc_instruct_first_10_results.json")
     with open(output_path, "w") as f:
         json.dump(results, f, indent=2)
     
-    print(f"Processing completed and results saved to {output_path}")
+    print(f"\nProcessing completed and results saved to {output_path}")
+    print(f"Average latency: {results['metadata']['average_latency']:.2f} seconds")
 
 if __name__ == "__main__":
     main()
