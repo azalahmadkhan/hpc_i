@@ -54,7 +54,7 @@ def calculate_step_similarities(all_steps, model):
 def load_first_10_questions():
     """Load the first 10 questions from the HPC-Instruct dataset using Hugging Face datasets library"""
     dataset = load_dataset("hpcgroup/hpc-instruct", split="train[:10]")  # Load first 10 samples
-    questions = [{"question": item["problem_statement"]} for item in dataset]
+    questions = [{"question": item["problem statement"]} for item in dataset]
     print(f"Successfully loaded first 10 questions from the HPC-Instruct dataset")
     return questions
 
