@@ -61,7 +61,7 @@ def load_first_10_questions():
 def main():
     parser = argparse.ArgumentParser(description='Process first 10 questions from HPC-Instruct dataset with Ollama')
     parser.add_argument('--output_dir', required=True, help='Directory to save output')
-    parser.add_argument('--model_name', default='qwen', help='Name of Ollama model')
+    parser.add_argument('--model_name', default='qwq', help='Name of Ollama model')
     
     args = parser.parse_args()
     
